@@ -1,13 +1,12 @@
 /**
  * =========================================================================
- * DRAWBOT v11.7 — Spaced Multi-Font Column Engine (VBS-Friendly)
+ * DRAWBOT v13.2 — Procedural Neon Engine (VBS-Friendly)
  * =========================================================================
  *
- * FIXES:
- * - Added a character-by-character tracker loop to handle letter-spacing.
- * - Prevents bold strokes from merging horizontally before rendering.
- * - Added narrow, clear sans-serif alternatives to handle compact words.
- * - Injected elegant script/cursive font choices into the random pool.
+ * MODIFICATIONS:
+ * - Replaced static color arrays with programmatic random RGB neon generation.
+ * - Enforces bright neon hues while explicitly avoiding near-white canvas blend-outs.
+ * - Preserved the core 6-layer illusion matrix pipeline.
  */
 
 'use strict';
@@ -30,23 +29,25 @@ const CONFIG = {
     USERNAME:           'Psudo',
     CANVAS_WIDTH:       800,
     CANVAS_HEIGHT:      600,
-    CANVAS_MARGIN_PCT:  0.15,
+    CANVAS_MARGIN_PCT:  0.18, 
 
-    // Replaced problematic fonts with a curated mix of clean narrow and elegant cursive choices
-    FONTS: [
-        'Arial Narrow',      // Crisp, thin, condensed structure
-        'Trebuchet MS',      // Clean layout spacing
-        'Courier New',        // Uniform monospace gaps
-        'Brush Script MT',   // Classic cursive/script font
-        'Lucida Handwriting',// Clear flowing cursive
-        'Comic Sans MS'      // Informal separated script style
+   FONTS: [
+        'Century Gothic',       // Sleek, ultra-modern geometric layout
+        'Cinzel',               // Elite, razor-sharp classical roman structure
+        'Edwardian Script ITC', // Premium, hyper-elegant sweeping cursive
+        'Futura',               // High-end, sharp geometric tech style
+        'Garamond',             // High-contrast, premium traditional elite serif
+        'Vladimir Script',      // Artistic, flowing elite script with dramatic angles
+        'Palatino',             // Strong, elegant, sophisticated calligraphic serif
+        'Georgia',              // Deeply defined, highly legible bold serif track
+        'Monotype Corsiva'      // Clean, classic, readable high-end italic script
     ],
 
-    LETTER_SPACING_PX:  12,   // Safe horizontal separation gap forced between characters
-    SCANLINE_STEP:      2,    // High fidelity vertical step definition
-    PACKET_DELAY:       30,        
-    BUFFER_GATE:        3000,
-    BUFFER_POLL:        15,
+    LETTER_SPACING_PX:  14,   
+    SCANLINE_STEP:      2,    
+    PACKET_DELAY:       25,        
+    BUFFER_GATE:        3500,
+    BUFFER_POLL:        12,
     TIME_LIMIT_MS:      48000,
     POLL_INTERVAL_MS:   500 
 };
@@ -57,8 +58,8 @@ const CONFIG = {
 
 class DrawBot {
     async init() {
-        console.log('═══ DrawBot v11.7 Spaced Font Engine Activated ═══');
-        console.log(`[WATCHER] Monitoring changes in: ${FILE_PATH}`);
+        console.log('═══ DrawBot v13.2 Procedural RGB Engine Online ═══');
+        console.log(`[WATCHER] Polling target queue: ${FILE_PATH}`);
 
         this.browser = await puppeteer.launch({
             headless: false,
@@ -112,7 +113,7 @@ class DrawBot {
             const btn = await this.page.waitForSelector('#modal button[type="submit"], #modal form button', { timeout: 5000 });
             await btn.click();
         } catch (e) {
-            console.warn('[LOGIN] Bypassed elements:', e.message);
+            console.warn('[LOGIN] Direct elements bypassed:', e.message);
         }
     }
 
@@ -126,12 +127,12 @@ class DrawBot {
                 const data = fs.readFileSync(FILE_PATH, 'utf8').trim();
                 if (data.length > 0) {
                     isProcessing = true;
-                    console.log(`[INJECT] Target intercepted: "${data}"`);
+                    console.log(`[INJECT] Dynamic string intercepted: "${data}"`);
                     
                     fs.writeFileSync(FILE_PATH, '', 'utf8');
                     await this._processTextRequest(data);
                     
-                    console.log('[STATUS] Operation completed.');
+                    console.log('[STATUS] Execution pass over. Ready for next loop.');
                     isProcessing = false;
                 }
             } catch (err) {
@@ -150,24 +151,21 @@ class DrawBot {
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
                 const font = cfg.FONTS[Math.floor(Math.random() * cfg.FONTS.length)];
-                
-                // Adjust font size scaling depending on cursive vs narrow type density
                 const isCursive = font.includes('Script') || font.includes('Handwriting');
-                const fontSize = isCursive ? Math.floor(Math.random() * 10) + 75 : Math.floor(Math.random() * 15) + 60;
+                const fontSize = isCursive ? Math.floor(Math.random() * 10) + 75 : Math.floor(Math.random() * 15) + 65;
                 
                 ctx.font = isCursive ? `${fontSize}px "${font}", cursive` : `bold ${fontSize}px "${font}"`;
 
-                // Calculate exact total layout canvas dimension tracking custom manual kerning
-                let calculatedTotalWidth = 0;
+                let totalWidth = 0;
                 for (let i = 0; i < txt.length; i++) {
-                    calculatedTotalWidth += ctx.measureText(txt[i]).width;
-                    if (i < txt.length - 1) calculatedTotalWidth += cfg.LETTER_SPACING_PX;
+                    totalWidth += ctx.measureText(txt[i]).width;
+                    if (i < txt.length - 1) totalWidth += cfg.LETTER_SPACING_PX;
                 }
 
                 const marginX = cfg.CANVAS_WIDTH * cfg.CANVAS_MARGIN_PCT;
                 const marginY = cfg.CANVAS_HEIGHT * cfg.CANVAS_MARGIN_PCT;
 
-                const maxX = cfg.CANVAS_WIDTH - calculatedTotalWidth - marginX;
+                const maxX = cfg.CANVAS_WIDTH - totalWidth - marginX;
                 const maxY = cfg.CANVAS_HEIGHT - marginY;
                 const minX = marginX;
                 const minY = marginY + fontSize;
@@ -175,34 +173,123 @@ class DrawBot {
                 const randomX = Math.max(minX, Math.floor(Math.random() * (maxX - minX + 1)) + minX);
                 const randomY = Math.max(minY, Math.floor(Math.random() * (maxY - minY + 1)) + minY);
 
-                const randColor = () => `#${Math.floor(Math.random()*16777215).toString(16).padStart(2, '0')}`;
-                const baseColor = randColor();
-                const shadowColor = '#000000';
+                // Generates vibrant neon RGB combinations by forcing channels high or fully off, avoiding white.
+                const generateProceduralNeon = () => {
+                    const channels = [255, Math.floor(Math.random() * 160), 0];
+                    // Shuffle array values randomly to distribute weights down Red/Green/Blue axis channels
+                    for (let i = channels.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [channels[i], channels[j]] = [channels[j], channels[i]];
+                    }
+                    const r = channels[0].toString(16).padStart(2, '0');
+                    const g = channels[1].toString(16).padStart(2, '0');
+                    const b = channels[2].toString(16).padStart(2, '0');
+                    return `#${r}${g}${b}`;
+                };
 
-                // Internal text drawer helper function with manual spacing constraints
-                const drawSpacedText = (targetCtx, fillStyleColor, xOffset, yOffset) => {
-                    targetCtx.fillStyle = fillStyleColor;
+                let neonMain = generateProceduralNeon();
+                let neonAlt = generateProceduralNeon();
+
+                const drawSpacedText = (targetCtx, color, xOffset, yOffset) => {
+                    targetCtx.fillStyle = color;
                     let currentX = randomX + xOffset;
                     const targetY = randomY + yOffset;
-
                     for (let i = 0; i < txt.length; i++) {
-                        const char = txt[i];
-                        targetCtx.fillText(char, currentX, targetY);
-                        currentX += targetCtx.measureText(char).width + cfg.LETTER_SPACING_PX;
+                        targetCtx.fillText(txt[i], currentX, targetY);
+                        currentX += targetCtx.measureText(txt[i]).width + cfg.LETTER_SPACING_PX;
                     }
                 };
 
                 const passes = [];
+                const effectSelector = Math.floor(Math.random() * 6); 
 
-                // Layer 1: Background Drop Shadow
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawSpacedText(ctx, shadowColor, 3, 3);
-                passes.push({ color: shadowColor, ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height) });
+                if (effectSelector === 0) {
+                    console.log("-> Selected Style: 🌊 Kinetic Wave Displacement");
+                    const tmpCanvas = document.createElement('canvas');
+                    tmpCanvas.width = canvas.width; tmpCanvas.height = canvas.height;
+                    const tmpCtx = tmpCanvas.getContext('2d');
+                    tmpCtx.font = ctx.font;
+                    drawSpacedText(tmpCtx, neonMain, 0, 0);
+                    
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    for (let x = 0; x < canvas.width; x++) {
+                        const shiftY = Math.round(Math.sin(x * 0.04) * 16);
+                        ctx.drawImage(tmpCanvas, x, 0, 1, canvas.height, x, shiftY, 1, canvas.height);
+                    }
+                    passes.push({ color: neonMain, ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height), thickOverride: 4 });
 
-                // Layer 2: Foreground Primary Fill Color
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawSpacedText(ctx, baseColor, 0, 0);
-                passes.push({ color: baseColor, ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height) });
+                } else if (effectSelector === 1) {
+                    console.log("-> Selected Style: 🔭 Isometric 3D Extrusion");
+                    const depthSteps = 12;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    for (let k = depthSteps; k > 0; k--) {
+                        drawSpacedText(ctx, '#111111', k, k);
+                    }
+                    passes.push({ color: '#000000', ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height), thickOverride: 4 });
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawSpacedText(ctx, neonMain, 0, 0);
+                    passes.push({ color: neonMain, ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height), thickOverride: 4 });
+
+                } else if (effectSelector === 2) {
+                    console.log("-> Selected Style: 🏁 Cyberpunk Matrix Glitch");
+                    const tmpCanvas = document.createElement('canvas');
+                    tmpCanvas.width = canvas.width; tmpCanvas.height = canvas.height;
+                    const tmpCtx = tmpCanvas.getContext('2d');
+                    tmpCtx.font = ctx.font;
+                    drawSpacedText(tmpCtx, neonMain, 0, 0);
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    for (let x = 0; x < canvas.width; x += 4) {
+                        const isGlitched = Math.random() < 0.35;
+                        const splitShift = isGlitched ? (Math.random() > 0.5 ? 12 : -12) : 0;
+                        ctx.drawImage(tmpCanvas, x, 0, 4, canvas.height, x, splitShift, 4, canvas.height);
+                    }
+                    passes.push({ color: neonMain, ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height), thickOverride: 4 });
+
+                } else if (effectSelector === 3) {
+                    console.log("-> Selected Style: 🦓 Laser Zebra Interlacing");
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawSpacedText(ctx, neonMain, 0, 0);
+                    const rawData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const pix = rawData.data;
+
+                    for (let y = 0; y < canvas.height; y++) {
+                        if (y % 6 < 3) { 
+                            for (let x = 0; x < canvas.width; x++) {
+                                const baseIdx = (y * canvas.width + x) * 4;
+                                pix[baseIdx + 3] = 0; 
+                            }
+                        }
+                    }
+                    passes.push({ color: neonMain, ctxData: rawData, thickOverride: 4 });
+
+                } else if (effectSelector === 4) {
+                    console.log("-> Selected Style: 🎯 Comic Book Stencil Pop-Art");
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.strokeStyle = '#111111';
+                    ctx.lineWidth = 10;
+                    let outlineX = randomX;
+                    for (let i = 0; i < txt.length; i++) {
+                        ctx.strokeText(txt[i], outlineX, randomY);
+                        outlineX += ctx.measureText(txt[i]).width + cfg.LETTER_SPACING_PX;
+                    }
+                    passes.push({ color: '#000000', ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height), stencil: true, thickOverride: 3 });
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawSpacedText(ctx, neonMain, 0, 0);
+                    passes.push({ color: neonMain, ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height), thickOverride: 4 });
+
+                } else if (effectSelector === 5) {
+                    console.log("-> Selected Style: ⚡ Chiseled Center Inline");
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawSpacedText(ctx, neonMain, 0, 0);
+                    passes.push({ color: neonMain, ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height), thickOverride: 6 }); 
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawSpacedText(ctx, '#ffffff', 0, 0);
+                    passes.push({ color: '#ffffff', ctxData: ctx.getImageData(0, 0, canvas.width, canvas.height), thickOverride: 2 }); 
+                }
 
                 const localPayloads = [];
                 const step = cfg.SCANLINE_STEP;
@@ -213,8 +300,9 @@ class DrawBot {
                     for (let x = 0; x < canvas.width; x += step) {
                         let inStroke = false;
                         let startY = 0;
+                        const verticalInterval = pass.stencil ? 4 : 1;
 
-                        for (let y = 0; y < canvas.height; y++) {
+                        for (let y = 0; y < canvas.height; y += verticalInterval) {
                             const idx = (y * canvas.width + x) * 4;
                             const alpha = data[idx + 3];
 
@@ -223,11 +311,20 @@ class DrawBot {
                                     inStroke = true;
                                     startY = y;
                                 }
+                                if (pass.stencil) {
+                                    localPayloads.push({
+                                        color: pass.color,
+                                        points: [[x, startY], [x, y]],
+                                        thick: pass.thickOverride
+                                    });
+                                    inStroke = false;
+                                }
                             } else {
                                 if (inStroke) {
                                     localPayloads.push({
                                         color: pass.color,
-                                        points: [[x, startY], [x, y - 1]]
+                                        points: [[x, startY], [x, y - 1]],
+                                        thick: pass.thickOverride
                                     });
                                     inStroke = false;
                                 }
@@ -236,7 +333,8 @@ class DrawBot {
                         if (inStroke) {
                             localPayloads.push({
                                 color: pass.color,
-                                points: [[x, startY], [x, canvas.height - 1]]
+                                points: [[x, startY], [x, canvas.height - 1]],
+                                thick: pass.thickOverride
                             });
                         }
                     }
@@ -245,7 +343,7 @@ class DrawBot {
             }, text, CONFIG);
 
             if (payloads && payloads.length > 0) {
-                console.log(`[TRANSMIT] Transferring ${payloads.length} crisp vertical lines...`);
+                console.log(`[TRANSMIT] Transferring ${payloads.length} customized dynamic matrix steps...`);
                 await this._transmit(payloads);
             }
         } catch (e) {
@@ -268,7 +366,7 @@ class DrawBot {
                 const canvas = document.querySelector('canvas');
                 const ctx    = canvas?.getContext('2d') ?? null;
                 const start  = Date.now();
-                const BATCH_SIZE = 10; 
+                const BATCH_SIZE = 12; 
 
                 for (let i = 0; i < payloads.length; i++) {
                     if (Date.now() - start > cfg.TIME_LIMIT_MS) break;
@@ -284,16 +382,17 @@ class DrawBot {
                         socket = getSocket();
                     }
 
-                    const { color, points } = payloads[i];
+                    const { color, points, thick } = payloads[i];
+                    const strokeWidth = thick || 4; 
 
                     socket.send(JSON.stringify({
-                        a: ['drawLine', { colour: color, lines: points, thick: 4 }],
+                        a: ['drawLine', { colour: color, lines: points, thick: strokeWidth }],
                     }));
 
                     if (ctx && points.length > 0) {
                         ctx.beginPath();
                         ctx.strokeStyle = color;
-                        ctx.lineWidth    = 4;
+                        ctx.lineWidth    = strokeWidth;
                         ctx.lineCap     = 'round';
                         ctx.moveTo(points[0][0], points[0][1]);
                         ctx.lineTo(points[1][0], points[1][1]);
